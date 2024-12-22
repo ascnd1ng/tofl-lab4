@@ -127,8 +127,11 @@ class RegexParser:
 # (?=a)b
 # a(?=b|c)d
 # (a(?1)b|c)
+
 # (?1)(a|(b|c))
 #'(a(?1))(\\1)(q|ww|e)'
+
+
 #
 # -:
 # a|b)
@@ -137,9 +140,27 @@ class RegexParser:
 # (a)(?2)
 # (?=(a))
 # (?=a(?=b))
-regex = '(?1)(a|(b|c))'
+regex = '(a(?1)b|c)'
 parser = RegexParser(regex)
 structure = parser.parse()
+
+class Validator:
+    def __init__(self, structure):
+        self.structure = structure
+
+    def validate(self):
+        q1 = self.structure.group_id < 10
+        return q1
+
+
+v = Validator(structure)
+if not v.validate():
+    print('incorrect expression')
+    exit()
+else:
+    print('correct expression')
+
+
 
 
 def print_concat_node(node, indent=0):
