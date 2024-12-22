@@ -1,3 +1,30 @@
+def process_string(input_str):
+    input_list = list(input_str)  # Преобразуем строку в список для удобства изменения
+    for i, char in enumerate(input_list):
+        if char == '*':
+            # Заменяем '*' на '>'
+            input_list[i] = '>'
+
+            # Поиск влево баланса скобок
+            open_count = 0
+            close_count = 0
+
+            for j in range(i - 1, -1, -1):
+                if input_list[j] == ')':
+                    close_count += 1
+                elif input_list[j] == '(':
+                    open_count += 1
+
+                # Когда баланс равен, вставляем '<'
+                if open_count == close_count and open_count > 0:
+                    input_list.insert(j, '<')
+                    break
+
+            break
+
+    return ''.join(input_list)
+
+
 class RegexParser:
     class Node:
         pass
@@ -31,6 +58,13 @@ class RegexParser:
         def __repr__(self):
             return f"GroupNode({self.group_id}, {self.child})"
 
+    class StarNode(Node):
+        def __init__(self, child):
+            self.child = child
+
+        def __repr__(self):
+            return f"StarNode({self.child})"
+
     class ExprRefNode(Node):
         def __init__(self, ref_id):
             self.ref_id = ref_id
@@ -60,6 +94,8 @@ class RegexParser:
             if self.regex[self.index] == '|':
                 break
             elif self.regex[self.index] == ')':
+                break
+            elif self.regex[self.index] == '>':
                 break
             else:
                 nodes.append(self._parse_atom())
@@ -98,6 +134,15 @@ class RegexParser:
         self.nodes_list.append(self.GroupNode(group_id, child))
         return self.GroupNode(group_id, child)
 
+    def _parse_star(self):
+        self.index += 1
+        child = self._parse_alt()
+        if self.index >= len(self.regex) or self.regex[self.index] != '>':
+            raise ValueError("Unmatched '>' in regex")
+        self.index += 1  # Skip '>'
+
+        self.nodes_list.append(self.StarNode(child))
+        return self.StarNode(child)
 
     def _parse_atom(self):
         if self.regex[self.index] == '(':
@@ -124,6 +169,8 @@ class RegexParser:
                     return self._parse_group(capturable=False)
             else:
                 return self._parse_group()
+        elif self.regex[self.index] == '<':
+            return self._parse_star()
 
         else:
             char = self.regex[self.index]
@@ -133,7 +180,6 @@ class RegexParser:
             return node
 
 
-# Пример использования
 # +:
 # (aa|bb)(?1)
 # (a|(bb))(a|(?2))
@@ -147,38 +193,31 @@ class RegexParser:
 # (a(?1)b|c)
 
 # (?1)(a|(b|c))
-#'(a(?1))(\\1)(q|ww|e)'
+#'(a(?1))(\\1)(q|ww|e)(sun)*'
+#'(a|b(?1))*'
 
 
-#
-# -:
-# a|b)
-# (?3)(a|(b|c))
-# ((a)(b)(c)(d)(e)(f)(g)(h)(i)(j))
-# (a)(?2)
-# (?=(a))
-# (?=a(?=b))
-regex = '(a(?1)b|c)'
-parser = RegexParser(regex)
+regex = '(a(?1))(\\1)(q|ww|e)(sun)*'
+regex_mod = process_string(regex)
+parser = RegexParser(regex_mod)
 structure = parser.parse()
+
 
 class Validator:
     def __init__(self, parser):
         self.parser = parser
 
     def validate(self):
-        q1 = self.parser.group_id < 10
+        q1 = self.parser.group_id <= 10
         return q1
 
 
-v = Validator(structure)
+v = Validator(parser)
 if not v.validate():
     print('incorrect expression')
     exit()
 else:
     print('correct expression')
-
-
 
 
 def print_concat_node(node, indent=0):
@@ -210,6 +249,15 @@ def print_group_node(node, indent=0):
         raise ValueError("Передан неверный тип. Ожидался объект типа GroupNode.")
 
 
+def print_star_node(node, indent=0):
+    if isinstance(node, RegexParser.StarNode):
+        print(f"{' ' * indent}StarNode\n{' ' * indent}(")
+        print_node(node.child, indent + 4)
+        print(f"{' ' * indent})")
+    else:
+        raise ValueError("Передан неверный тип. Ожидался объект типа StarNode.")
+
+
 def print_node(node, indent=0):
     if isinstance(node, RegexParser.ConcatNode):
         print_concat_node(node, indent)
@@ -217,6 +265,8 @@ def print_node(node, indent=0):
         print_alt_node(node, indent)
     elif isinstance(node, RegexParser.GroupNode):
         print_group_node(node, indent)
+    elif isinstance(node, RegexParser.StarNode):
+        print_star_node(node, indent)
     elif isinstance(node, RegexParser.CharNode):
         print(f"{' ' * indent}CharNode('{node.char}')")
     elif isinstance(node, RegexParser.ExprRefNode):
@@ -254,7 +304,8 @@ class CFGBuilder:
             'ConcatNode': self.process_concat_node,
             'AltNode': self.process_alt_node,
             'ExprRefNode': self.ref_node,
-            'StrRefNode': self.ref_node
+            'StrRefNode': self.ref_node,
+            'StarNode': self.star_node
         }
 
     def build(self, node):
@@ -300,18 +351,24 @@ class CFGBuilder:
             self.rules.setdefault(nt, []).append([br_nt])
         return nt
 
-    def contains_group(self, node, ref_id):
-        if isinstance(node, RegexParser.GroupNode) and node.group_id == ref_id:
-            return True
-
-        if isinstance(node, (RegexParser.ConcatNode, RegexParser.AltNode)):
-            return any(self.contains_group(child, ref_id) for child in node.children)
-
     def ref_node(self, node):
         ref_id = node.ref_id
         if ref_id not in self.group_nonterm:
             self.group_nonterm[ref_id] = f"G{ref_id}"
         return self.group_nonterm[ref_id]
+
+    def star_node(self, node):
+
+        nt = self.generate_unique_nt('R')
+        sub_nt = node.child
+        sub_nt_rules = self.process_node(sub_nt)
+        lst = []
+        lst.append([sub_nt_rules])
+        self.rules[nt] = lst
+        for x in self.rules[nt]:
+            x.append(nt)
+        self.rules[nt].append('Eps')
+        return nt
 
     def generate_unique_nt(self, prefix):
         if prefix == 'Ncg':
@@ -329,6 +386,11 @@ class CFGBuilder:
         elif prefix == 'Char':
             name = f"{prefix}{self.char_index}"
             self.char_index += 1
+            return name
+
+        elif prefix == 'R':
+            name = f"{prefix}{self.star_index}"
+            self.star_index += 1
             return name
 
 
