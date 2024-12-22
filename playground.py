@@ -49,6 +49,7 @@ class RegexParser:
         self.regex = regex
         self.index = 0
         self.group_id = 1
+        self.nodes_list = []
 
     def parse(self):
         return self._parse_alt()
@@ -62,14 +63,24 @@ class RegexParser:
                 break
             else:
                 nodes.append(self._parse_atom())
-        return self.ConcatNode(nodes) if len(nodes) > 1 else nodes[0]
+        if len(nodes) > 1:
+            node = self.ConcatNode(nodes)
+            self.nodes_list.append(node)
+            return node
+        else:
+            return nodes[0]
 
     def _parse_alt(self):
         nodes = [self._parse_concat()]
         while self.index < len(self.regex) and self.regex[self.index] == '|':
             self.index += 1
             nodes.append(self._parse_concat())
-        return self.AltNode(nodes) if len(nodes) > 1 else nodes[0]
+        if len(nodes) > 1:
+            node = self.AltNode(nodes)
+            self.nodes_list.append(node)
+            return node
+        else:
+            return nodes[0]
 
     def _parse_group(self, capturable=True):
         if capturable:
@@ -77,16 +88,16 @@ class RegexParser:
             group_id = self.group_id
             self.group_id += 1
         else:
+            group_id = -1
             self.index += 3
         child = self._parse_alt()
         if self.index >= len(self.regex) or self.regex[self.index] != ')':
             raise ValueError("Unmatched '(' in regex")
         self.index += 1  # Skip ')'
 
-        if capturable:
-            return self.GroupNode(group_id, child)
-        else:
-            return self.GroupNode(-1, child)
+        self.nodes_list.append(self.GroupNode(group_id, child))
+        return self.GroupNode(group_id, child)
+
 
     def _parse_atom(self):
         if self.regex[self.index] == '(':
@@ -95,14 +106,19 @@ class RegexParser:
                 if self.index < len(self.regex) and self.regex[self.index].isdigit():
                     ref_id = int(self.regex[self.index])
                     self.index += 2
-                    return self.StrRefNode(ref_id)
+                    node = self.StrRefNode(ref_id)
+                    self.nodes_list.append(node)
+                    return node
 
             elif self.regex[self.index + 1] == '?':
                 self.index += 2
                 if self.index < len(self.regex) and self.regex[self.index].isdigit():
                     ref_id = int(self.regex[self.index])
                     self.index += 2  # Skip ')'
-                    return self.ExprRefNode(ref_id)
+                    node = self.ExprRefNode(ref_id)
+                    self.nodes_list.append(node)
+                    return node
+
                 elif self.index < len(self.regex) and self.regex[self.index] == ':':
                     self.index -= 2
                     return self._parse_group(capturable=False)
@@ -112,7 +128,9 @@ class RegexParser:
         else:
             char = self.regex[self.index]
             self.index += 1
-            return self.CharNode(char)
+            node = self.CharNode(char)
+            self.nodes_list.append(node)
+            return node
 
 
 # Пример использования
@@ -145,11 +163,11 @@ parser = RegexParser(regex)
 structure = parser.parse()
 
 class Validator:
-    def __init__(self, structure):
-        self.structure = structure
+    def __init__(self, parser):
+        self.parser = parser
 
     def validate(self):
-        q1 = self.structure.group_id < 10
+        q1 = self.parser.group_id < 10
         return q1
 
 
@@ -212,6 +230,7 @@ def print_node(node, indent=0):
 print(regex)
 print(structure)
 print_node(structure)
+print(parser.nodes_list)
 
 
 class RaiseError(Exception):
