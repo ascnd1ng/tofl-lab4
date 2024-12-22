@@ -194,7 +194,7 @@ class RegexParser:
 
 
 
-regex = '(a)(b)(c)(d)(e)(f)(g)(h)(i)(k)'
+regex = '(a(?1))(\\1)(q|ww|e)(sun)*'
 regex_mod = process_string(regex)
 parser = RegexParser(regex_mod)
 node = parser.parse()
@@ -204,6 +204,7 @@ class Validator:
     def __init__(self, parser):
         self.parser = parser
         self.node = node
+        self.unused_groups=[]
 
     def validate(self):
         return self.validate1() and self.validate2()
@@ -222,8 +223,31 @@ class Validator:
 
         return True
 
+    def traverse(self, node,  inlevel):
+
+        # if isinstance(node, RegexParser.GroupNode) and inlevel >= 0:
+        #     self.unused_groups.append(node.group_id)
+        #
+        # if isinstance(node, (RegexParser.StarNode, RegexParser.AltNode)):
+        #     inlevel += 1
+        #     for child in node.children:
+        #         self.traverse(child, inlevel)
+        #     inlevel -= 1
+        #
+        # elif isinstance(node, RegexParser.ConcatNode):
+        #     for child in list(node.children):
+        #         self.traverse(child, inlevel)
+        #
+        # elif isinstance(node, RegexParser.GroupNode):
+        #     for child in list(node.child):
+        #         self.traverse(child, inlevel)
+
+        return
+
 
 v = Validator(parser)
+v.traverse(node, 0)
+# print(v.unused_groups)
 if not v.validate():
     print('incorrect expression')
     exit()
@@ -289,9 +313,9 @@ def print_node(node, indent=0):
 
 
 print(regex)
-print(node)
+# print(node)
 print_node(node)
-print(parser.nodes_list)
+# print(parser.nodes_list)
 
 
 class RaiseError(Exception):
@@ -407,6 +431,9 @@ class CFGBuilder:
 
 c = CFGBuilder(node)
 start, rules = c.build(node)
+print()
+print('КС-грамматика:')
+print()
 for nt in rules:
     for rule_output in rules[nt]:
         print(f"{nt} -> {''.join(rule_output)}")
