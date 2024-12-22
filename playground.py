@@ -46,7 +46,6 @@ class RegexParser:
             return f"StrRefNode({self.ref_id})"
 
     def __init__(self, regex):
-        self.indent = 0
         self.regex = regex
         self.index = 0
         self.group_id = 1
@@ -137,7 +136,7 @@ class RegexParser:
 # (a)(?2)
 # (?=(a))
 # (?=a(?=b))
-regex = '(a|(bb))(a|(?3))'
+regex = '(a|(b|c))d'
 parser = RegexParser(regex)
 result = parser.parse()
 
@@ -191,3 +190,90 @@ def print_node(node, indent=0):
 print(regex)
 print(result)
 print_node(result)
+
+
+class CFGBuilder:
+    def __init__(self, node_representations):
+        self.node_representations = node_representations  # Изменено имя переменной
+        self.group_nonterm = {}
+        self.noncap_index = 1
+        self.star_index = 1
+        self.rules = {}
+        self.processors = {
+            'CharNode': self.process_char_node,
+            'GroupNode': self.process_group_node,
+            'ConcatNode': self.process_concat_node,
+            'AltNode': self.process_alt_node,
+            'ExprRefNode': self.process_expr_ref_node
+        }
+
+    def build(self, node):
+        start = 'S'
+        self.rules[start] = [[self.process_node(node)]]
+        return start, self.rules
+
+    def process_node(self, node):
+        node_type = node.__class__.__name__
+        if node_type in self.processors:
+            return self.processors[node_type](node)
+        else:
+            raise RaiseError(f"Неизвестный тип узла {node_type}")
+
+    def process_char_node(self, node):
+        nt = self.generate_unique_nt('CHAR')
+        self.rules.setdefault(nt, []).append([node.char])
+        return nt
+
+    def process_group_node(self, node):
+        nt = self.group_nonterm.get(node.group_id)
+        if nt is None:
+            nt = f"G{node.group_id}"
+            self.group_nonterm[node.group_id] = nt
+        sub_nt = self.process_node(node.child)
+        self.rules.setdefault(nt, []).append([sub_nt])
+        return nt
+
+    def process_concat_node(self, node):
+        nt = self.generate_unique_nt('C')
+        seq_nts = [self.process_node(ch) for ch in node.children]
+        self.rules.setdefault(nt, []).append(seq_nts)
+        return nt
+
+    def process_alt_node(self, node):
+        nt = self.generate_unique_nt('A')
+        for branch in node.children:
+            br_nt = self.process_node(branch)
+            self.rules.setdefault(nt, []).append([br_nt])
+        return nt
+
+    def process_expr_ref_node(self, node):
+        ref_id = node.ref_id
+        if ref_id not in self.group_nonterm:
+            self.group_nonterm[ref_id] = f"G{ref_id}"
+            if ref_id not in self.node_representations:
+                raise RaiseError(f"Ссылка на несуществующую группу {ref_id}")
+            sub_nt = self.process_node(self.node_representations[ref_id])
+            nt = self.group_nonterm[ref_id]
+            self.rules.setdefault(nt, []).append([sub_nt])
+        return self.group_nonterm[ref_id]
+
+    def generate_unique_nt(self, prefix):
+        if prefix == 'N':
+            name = f"N{self.noncap_index}"
+            self.noncap_index += 1
+            return name
+        elif prefix == 'R':
+            name = f"R{self.star_index}"
+            self.star_index += 1
+            return name
+        else:
+            name = f"{prefix}{self.noncap_index + self.star_index}"
+            self.noncap_index += 1
+            return name
+
+
+c = CFGBuilder(result)
+start, rules = c.build(result)
+for nt in rules:
+    for rule_output in rules[nt]:
+        print(f"{nt} -> {''.join(rule_output)}")
