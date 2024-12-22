@@ -52,7 +52,7 @@ class RegexParser:
         self.group_id = 1
 
     def parse(self):
-        return self._parse_concat()
+        return self._parse_alt()
 
     def _parse_concat(self):
         nodes = []
@@ -72,35 +72,43 @@ class RegexParser:
             nodes.append(self._parse_concat())
         return self.AltNode(nodes) if len(nodes) > 1 else nodes[0]
 
-    def _parse_group(self):
-        self.index += 1  # Skip '('
-        group_id = self.group_id
-        self.group_id += 1
+    def _parse_group(self, capturable=True):
+        if capturable:
+            self.index += 1  # Skip '('
+            group_id = self.group_id
+            self.group_id += 1
+        else:
+            self.index += 3
         child = self._parse_alt()
         if self.index >= len(self.regex) or self.regex[self.index] != ')':
             raise ValueError("Unmatched '(' in regex")
         self.index += 1  # Skip ')'
-        return self.GroupNode(group_id, child)
+
+        if capturable:
+            return self.GroupNode(group_id, child)
+        else:
+            return self.GroupNode(-1, child)
 
     def _parse_atom(self):
         if self.regex[self.index] == '(':
-            return self._parse_group()
-        elif self.regex[self.index] == '\\':
-            self.index += 1
-            if self.index < len(self.regex) and self.regex[self.index].isdigit():
-                ref_id = int(self.regex[self.index])
-                self.index += 1
-                return self.StrRefNode(ref_id)
+            if self.regex[self.index + 1] == '\\':
+                self.index += 2
+                if self.index < len(self.regex) and self.regex[self.index].isdigit():
+                    ref_id = int(self.regex[self.index])
+                    self.index += 1
+                    return self.StrRefNode(ref_id)
+
+            elif self.regex[self.index + 1] == '?':
+                self.index += 2
+                if self.index < len(self.regex) and self.regex[self.index].isdigit():
+                    ref_id = int(self.regex[self.index])
+                    self.index += 1  # Skip ')'
+                    return self.ExprRefNode(ref_id)
+                elif self.index < len(self.regex) and self.regex[self.index] == ':':
+                    self.index -= 2
+                    return self._parse_group(capturable=False)
             else:
-                raise ValueError("Invalid escape sequence in regex")
-        elif self.regex[self.index] == '?':
-            self.index += 1
-            if self.index < len(self.regex) and self.regex[self.index].isdigit():
-                ref_id = int(self.regex[self.index])
-                self.index += 1  # Skip ')'
-                return self.ExprRefNode(ref_id)
-            else:
-                raise ValueError("Invalid expression reference in regex")
+                return self._parse_group()
 
         else:
             char = self.regex[self.index]
@@ -129,7 +137,7 @@ class RegexParser:
 # (a)(?2)
 # (?=(a))
 # (?=a(?=b))
-regex = "((((a|b)|(b|c)|((c|d)|(e|f)))))"
+regex = '(a|(bb))(a|(?3))'
 parser = RegexParser(regex)
 result = parser.parse()
 
