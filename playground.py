@@ -137,9 +137,9 @@ class RegexParser:
 # (a)(?2)
 # (?=(a))
 # (?=a(?=b))
-regex = '(a(?1))(\\1)(q|ww|e)(?:sun)'
+regex = '(?1)(a|(b|c))'
 parser = RegexParser(regex)
-result = parser.parse()
+structure = parser.parse()
 
 
 def print_concat_node(node, indent=0):
@@ -189,8 +189,8 @@ def print_node(node, indent=0):
 
 
 print(regex)
-print(result)
-print_node(result)
+print(structure)
+print_node(structure)
 
 
 class RaiseError(Exception):
@@ -260,8 +260,17 @@ class CFGBuilder:
             self.rules.setdefault(nt, []).append([br_nt])
         return nt
 
+    def contains_group(self, node, ref_id):
+        if isinstance(node, RegexParser.GroupNode) and node.group_id == ref_id:
+            return True
+
+        if isinstance(node, (RegexParser.ConcatNode, RegexParser.AltNode)):
+            return any(self.contains_group(child, ref_id) for child in node.children)
+
     def ref_node(self, node):
         ref_id = node.ref_id
+        if ref_id not in self.group_nonterm:
+            self.group_nonterm[ref_id] = f"G{ref_id}"
         return self.group_nonterm[ref_id]
 
     def generate_unique_nt(self, prefix):
@@ -283,8 +292,8 @@ class CFGBuilder:
             return name
 
 
-c = CFGBuilder(result)
-start, rules = c.build(result)
+c = CFGBuilder(structure)
+start, rules = c.build(structure)
 for nt in rules:
     for rule_output in rules[nt]:
         print(f"{nt} -> {''.join(rule_output)}")
