@@ -1,5 +1,5 @@
 def process_string(input_str):
-    input_list = list(input_str)  # Преобразуем строку в список для удобства изменения
+    input_list = list(input_str)
     for i, char in enumerate(input_list):
         if char == '*':
             # Заменяем '*' на '>'
@@ -179,37 +179,48 @@ class RegexParser:
             self.nodes_list.append(node)
             return node
 
-
-# +:
-# (aa|bb)(?1)
-# (a|(bb))(a|(?2))
-# (a|(bb))(a|(?3))
-# (a|(b|c))d
-# ((a|b)c)*
-# (a(?=b))c
-# (a*|(?:b|c))d
-# (?=a)b
-# a(?=b|c)d
-# (a(?1)b|c)
-
+'+'
 # (?1)(a|(b|c))
 #'(a(?1))(\\1)(q|ww|e)(sun)*'
 #'(a|b(?1))*'
 
 
-regex = '(a(?1))(\\1)(q|ww|e)(sun)*'
+'-'
+#'(a)(b)(c)(d)(e)(f)(g)(h)(i)(k)
+#'(a|(bb)(\\1))'
+#(a|(bb)(\1))(a|(?2))
+
+
+
+
+
+regex = '(a)(b)(c)(d)(e)(f)(g)(h)(i)(k)'
 regex_mod = process_string(regex)
 parser = RegexParser(regex_mod)
-structure = parser.parse()
+node = parser.parse()
 
 
 class Validator:
     def __init__(self, parser):
         self.parser = parser
+        self.node = node
 
     def validate(self):
+        return self.validate1() and self.validate2()
+
+    def validate1(self):
         q1 = self.parser.group_id <= 10
         return q1
+
+    def validate2(self):
+        s = set()
+        for x in parser.nodes_list:
+            if isinstance(x, RegexParser.StrRefNode):
+                s.add(x.ref_id)
+            if isinstance(x, RegexParser.GroupNode) and (x.group_id in s):
+                return False
+
+        return True
 
 
 v = Validator(parser)
@@ -278,8 +289,8 @@ def print_node(node, indent=0):
 
 
 print(regex)
-print(structure)
-print_node(structure)
+print(node)
+print_node(node)
 print(parser.nodes_list)
 
 
@@ -394,8 +405,8 @@ class CFGBuilder:
             return name
 
 
-c = CFGBuilder(structure)
-start, rules = c.build(structure)
+c = CFGBuilder(node)
+start, rules = c.build(node)
 for nt in rules:
     for rule_output in rules[nt]:
         print(f"{nt} -> {''.join(rule_output)}")
