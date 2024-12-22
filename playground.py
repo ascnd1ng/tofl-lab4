@@ -94,14 +94,14 @@ class RegexParser:
                 self.index += 2
                 if self.index < len(self.regex) and self.regex[self.index].isdigit():
                     ref_id = int(self.regex[self.index])
-                    self.index += 1
+                    self.index += 2
                     return self.StrRefNode(ref_id)
 
             elif self.regex[self.index + 1] == '?':
                 self.index += 2
                 if self.index < len(self.regex) and self.regex[self.index].isdigit():
                     ref_id = int(self.regex[self.index])
-                    self.index += 1  # Skip ')'
+                    self.index += 2  # Skip ')'
                     return self.ExprRefNode(ref_id)
                 elif self.index < len(self.regex) and self.regex[self.index] == ':':
                     self.index -= 2
@@ -128,6 +128,7 @@ class RegexParser:
 # a(?=b|c)d
 # (a(?1)b|c)
 # (?1)(a|(b|c))
+#'(a(?1))(\\1)(q|ww|e)'
 #
 # -:
 # a|b)
@@ -136,7 +137,7 @@ class RegexParser:
 # (a)(?2)
 # (?=(a))
 # (?=a(?=b))
-regex = '(a|(b|c))d'
+regex = '(a(?1))(\\1)(q|ww|e)(?:sun)'
 parser = RegexParser(regex)
 result = parser.parse()
 
@@ -192,19 +193,28 @@ print(result)
 print_node(result)
 
 
+class RaiseError(Exception):
+    pass
+
+
 class CFGBuilder:
     def __init__(self, node_representations):
-        self.node_representations = node_representations  # Изменено имя переменной
+        self.node_representations = node_representations
         self.group_nonterm = {}
-        self.noncap_index = 1
+        self.ncg_index = 1
+        self.alt_index = 1
         self.star_index = 1
+        self.char_index = 1
+        self.group_index = 1
+        self.concat_index = 1
         self.rules = {}
         self.processors = {
             'CharNode': self.process_char_node,
             'GroupNode': self.process_group_node,
             'ConcatNode': self.process_concat_node,
             'AltNode': self.process_alt_node,
-            'ExprRefNode': self.process_expr_ref_node
+            'ExprRefNode': self.ref_node,
+            'StrRefNode': self.ref_node
         }
 
     def build(self, node):
@@ -220,14 +230,18 @@ class CFGBuilder:
             raise RaiseError(f"Неизвестный тип узла {node_type}")
 
     def process_char_node(self, node):
-        nt = self.generate_unique_nt('CHAR')
+        nt = self.generate_unique_nt('Char')
         self.rules.setdefault(nt, []).append([node.char])
         return nt
 
     def process_group_node(self, node):
         nt = self.group_nonterm.get(node.group_id)
         if nt is None:
-            nt = f"G{node.group_id}"
+            if node.group_id != -1:
+                nt = f"G{node.group_id}"
+            else:
+                nt = self.generate_unique_nt('Ncg')
+                self.ncg_index += 1
             self.group_nonterm[node.group_id] = nt
         sub_nt = self.process_node(node.child)
         self.rules.setdefault(nt, []).append([sub_nt])
@@ -246,29 +260,26 @@ class CFGBuilder:
             self.rules.setdefault(nt, []).append([br_nt])
         return nt
 
-    def process_expr_ref_node(self, node):
+    def ref_node(self, node):
         ref_id = node.ref_id
-        if ref_id not in self.group_nonterm:
-            self.group_nonterm[ref_id] = f"G{ref_id}"
-            if ref_id not in self.node_representations:
-                raise RaiseError(f"Ссылка на несуществующую группу {ref_id}")
-            sub_nt = self.process_node(self.node_representations[ref_id])
-            nt = self.group_nonterm[ref_id]
-            self.rules.setdefault(nt, []).append([sub_nt])
         return self.group_nonterm[ref_id]
 
     def generate_unique_nt(self, prefix):
-        if prefix == 'N':
-            name = f"N{self.noncap_index}"
-            self.noncap_index += 1
+        if prefix == 'Ncg':
+            name = f"Ncg{self.ncg_index}"
+            self.ncg_index += 1
             return name
-        elif prefix == 'R':
-            name = f"R{self.star_index}"
-            self.star_index += 1
+        elif prefix == 'A':
+            name = f"R{self.alt_index}"
+            self.alt_index += 1
             return name
-        else:
-            name = f"{prefix}{self.noncap_index + self.star_index}"
-            self.noncap_index += 1
+        elif prefix == 'C':
+            name = f"{prefix}{self.concat_index}"
+            self.concat_index += 1
+            return name
+        elif prefix == 'Char':
+            name = f"{prefix}{self.char_index}"
+            self.char_index += 1
             return name
 
 
